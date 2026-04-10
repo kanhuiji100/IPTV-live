@@ -1,0 +1,162 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>IPTV 网络电视</title>
+  <link rel="stylesheet" href="style.css" />
+  <script src="https://cdn.jsdelivr.net/npm/flv.js@1.6.2/dist/flv.min.js"></script>
+</head>
+<body>
+  <div class="app">
+    <header>
+      <h1>IPTV 网络电视</h1>
+      <p>选择频道后，后端会使用 ffmpeg 转码并推送到 RTMP 服务器。</p>
+      <div class="apple-link-row">
+        <a href="/apple.html" class="primary">苹果用户如果无法播放请点此按钮使用</a>
+      </div>
+    </header>
+    <main>
+      <section class="panel channels-panel">
+        <h2>频道列表</h2>
+        <div id="channelList" class="channel-list">正在加载频道...</div>
+        <button id="reloadBtn" class="primary">刷新频道</button>
+      </section>
+      <section class="panel player-panel">
+        <h2>FLV 播放器</h2>
+        <video id="videoPlayer" controls muted playsinline></video>
+        <div class="status-row">
+          <div id="currentChannel">当前频道：未播放</div>
+          <div id="statusMessage"></div>
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <script>
+    const channelListEl = document.getElementById('channelList');
+    const currentChannelEl = document.getElementById('currentChannel');
+    const statusMessageEl = document.getElementById('statusMessage');
+    const reloadBtn = document.getElementById('reloadBtn');
+    const videoElement = document.getElementById('videoPlayer');
+    let player = null;
+    let currentFlvUrl = '';
+
+    async function loadChannels() {
+      channelListEl.textContent = '正在加载频道...';
+      try {
+        const resp = await fetch('/api/channels');
+        const data = await resp.json();
+        channelListEl.innerHTML = '';
+        data.channels.forEach(channel => {
+          const button = document.createElement('button');
+          button.className = 'channel-button';
+          button.textContent = channel.name;
+          button.addEventListener('click', () => playChannel(channel.name));
+          channelListEl.appendChild(button);
+        });
+      } catch (error) {
+        channelListEl.textContent = '加载频道失败，请刷新页面。';
+      }
+    }
+
+    async function loadStatus() {
+      try {
+        const resp = await fetch('/api/status');
+        const data = await resp.json();
+        currentFlvUrl = data.flv_url || '';
+        if (data.active_channel) {
+          currentChannelEl.textContent = '当前频道：' + data.active_channel;
+          initPlayer(currentFlvUrl);
+        }
+      } catch (_) {
+        currentChannelEl.textContent = '当前频道：未播放';
+      }
+    }
+
+    function initPlayer(url, attempt = 0) {
+      if (!url) {
+        statusMessageEl.textContent = 'FLV 地址未配置。';
+        return;
+      }
+      if (!flvjs.isSupported()) {
+        statusMessageEl.textContent = '浏览器不支持 flv.js。';
+        return;
+      }
+      if (player) {
+        player.unload();
+        player.detachMediaElement();
+        player.destroy();
+        player = null;
+      }
+      videoElement.removeAttribute('src');
+      videoElement.load();
+
+      const playerUrl = url + (url.includes('?') ? '&' : '?') + '_=' + Date.now();
+      player = flvjs.createPlayer({
+        type: 'flv',
+        url: playerUrl,
+        isLive: true,
+      });
+      player.attachMediaElement(videoElement);
+      player.load();
+      player.play().catch(() => {});
+      statusMessageEl.textContent = '正在播放，地址：' + url;
+
+      if (attempt < 2) {
+        setTimeout(() => {
+          if (videoElement.readyState < 2 && player) {
+            statusMessageEl.textContent = '直播流尚未准备，好像正在加载，正在重试...';
+            if (player) {
+              player.unload();
+              player.detachMediaElement();
+              player.destroy();
+              player = null;
+            }
+            initPlayer(url, attempt + 1);
+          }
+        }, 1800);
+      }
+    }
+
+    async function playChannel(name) {
+      if (!name) {
+        return;
+      }
+      statusMessageEl.textContent = '正在请求播放：' + name;
+      try {
+        const resp = await fetch('/api/play', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ name }),
+        });
+        const data = await resp.json();
+        if (!resp.ok) {
+          throw new Error(data.error || '播放请求失败');
+        }
+        currentChannelEl.textContent = '当前频道：' + data.active_channel;
+        initPlayer(data.flv_url || currentFlvUrl);
+      } catch (error) {
+        statusMessageEl.textContent = '播放请求失败：' + error.message;
+      }
+    }
+
+    reloadBtn.addEventListener('click', async () => {
+      reloadBtn.disabled = true;
+      reloadBtn.textContent = '刷新中...';
+      try {
+        await fetch('/api/reload');
+        await loadChannels();
+        statusMessageEl.textContent = '频道已刷新。';
+      } catch (_) {
+        statusMessageEl.textContent = '刷新频道失败。';
+      }
+      reloadBtn.disabled = false;
+      reloadBtn.textContent = '刷新频道';
+    });
+
+    loadChannels();
+    loadStatus();
+  </script>
+</body>
+</html>

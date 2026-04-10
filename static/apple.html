@@ -1,0 +1,60 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>IPTV 苹果 HLS 播放</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <div class="app">
+    <header>
+      <h1>IPTV 苹果专用 HLS 播放</h1>
+      <p>本页面使用 HLS 播放，适用于苹果系统和 Safari 浏览器。</p>
+      <div class="apple-link-row">
+        <a href="/" class="primary">返回 FLV 主页面</a>
+      </div>
+    </header>
+    <main>
+      <section class="panel player-panel">
+        <h2>HLS 播放器</h2>
+        <video id="videoPlayer" controls playsinline webkit-playsinline></video>
+        <div class="status-row">
+          <div id="currentChannel">当前频道：未播放</div>
+          <div id="statusMessage">请先在主页面选择频道并开始播放，然后刷新本页。</div>
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <script>
+    const videoElement = document.getElementById('videoPlayer');
+    const currentChannelEl = document.getElementById('currentChannel');
+    const statusMessageEl = document.getElementById('statusMessage');
+
+    async function loadHlsUrl() {
+      try {
+        const resp = await fetch('/api/status');
+        const data = await resp.json();
+        const hlsUrl = data.hls_url;
+        if (!hlsUrl) {
+          statusMessageEl.textContent = 'HLS 地址未配置，请检查后端配置。';
+          return;
+        }
+        if (data.active_channel) {
+          currentChannelEl.textContent = '当前频道：' + data.active_channel;
+        }
+        const url = hlsUrl + (hlsUrl.includes('?') ? '&' : '?') + '_=' + Date.now();
+        videoElement.src = url;
+        videoElement.load();
+        await videoElement.play().catch(() => {});
+        statusMessageEl.textContent = '正在播放 HLS：' + hlsUrl;
+      } catch (error) {
+        statusMessageEl.textContent = '加载 HLS 地址失败：' + error.message;
+      }
+    }
+
+    loadHlsUrl();
+  </script>
+</body>
+</html>
