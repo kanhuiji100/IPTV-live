@@ -1,0 +1,8 @@
+{
+  "m3u8_path": "iptv.m3u8",
+  "rtmp_url": "rtmp://127.0.0.1/live/livestream",
+  "flv_url": "http://127.0.0.1:8081/live/livestream.flv",
+  "hls_url": "http://127.0.0.1:8081/live/livestream.m3u8",
+  "http_addr": ":8080",
+  "ffmpeg_path": "ffmpeg"
+}
